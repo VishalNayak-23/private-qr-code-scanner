@@ -2,204 +2,165 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Private YouTube QR Access — Robust</title>
+  <title>Time-Lock QR YouTube Link</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; background:#f6f8fb; color:#111; }
-    .card { background:white; border-radius:12px; padding:24px; box-shadow:0 8px 20px rgba(0,0,0,0.08); text-align:center; width:360px; max-width:95%; }
-    input { padding:10px; border-radius:8px; border:1px solid #ccc; width:80%; margin-bottom:12px; }
-    button { background:#0b74de; color:#fff; border:none; padding:10px 16px; border-radius:8px; cursor:pointer; font-weight:600; }
-    .small{ font-size:12px; color:#666; margin-top:10px; }
-    #qrcode { margin:0 auto 12px; }
-    .hidden{ display:none; }
-    #debug{ font-size:12px; color:#777; margin-top:10px; text-align:left; word-break:break-all; }
-    iframe{ width:100%; height:210px; border:none; border-radius:8px; margin-top:12px; }
-    .fallback { margin-top:12px; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f6f8fb;
+      color: #111;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      text-align: center;
+      width: 320px;
+      position: relative;
+      overflow: hidden;
+    }
+    #qrcode { margin: 0 auto 18px; display: none; }
+    input {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      width: 80%;
+      margin-bottom: 12px;
+    }
+    button {
+      background: #0b74de;
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:active { transform: translateY(1px); }
+    .small { font-size: 12px; color: #666; margin-top: 10px; }
+    .hidden { display: none; }
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #333;
+      font-size: 16px;
+      text-align: center;
+      border-radius: 12px;
+      visibility: hidden;
+    }
+    .timer {
+      font-size: 14px;
+      color: #0b74de;
+      margin-bottom: 8px;
+    }
   </style>
 </head>
 <body>
-  <div class="card" id="card">
-    <h2 id="title">Private QR Access</h2>
+  <div class="card">
+    <h2>Private QR Access</h2>
 
-    <!-- Step A: first password to reveal QR -->
-    <div id="revealBlock">
+    <!-- Password area -->
+    <div id="auth-section">
       <p>Enter password to view the QR code:</p>
-      <input id="pw1" type="password" placeholder="Enter password" />
-      <br/>
-      <button id="showQrBtn">Unlock</button>
-      <p class="small">For authorized users only.</p>
+      <input type="password" id="password" placeholder="Enter password" />
+      <br />
+      <button id="submitBtn">Unlock</button>
+      <div class="small">For authorized users only.</div>
     </div>
 
-    <!-- Step B: show QR and fallback controls -->
-    <div id="qrBlock" class="hidden">
-      <div class="small">QR visible for <span id="timer">30</span>s</div>
+    <!-- QR section -->
+    <div id="qr-section" class="hidden">
+      <div class="timer">QR visible for <span id="seconds">30</span> seconds</div>
+      <h2>Scan this QR</h2>
       <div id="qrcode"></div>
-      <p class="small">Scan with your phone camera. If scanning does not forward, use the button below.</p>
-      <div class="fallback">
-        <button id="manualContinue">I scanned but nothing happened — continue</button>
+      <div class="info">
+        Opens:
+        <strong>https://youtu.be/rsJ-LGpE7Lc?si=w_GlXtcaA8-jwwyH</strong>
       </div>
+      <button id="downloadBtn">Download PNG</button>
+      <div class="small">Scan quickly — it will hide automatically.</div>
+      <div class="overlay" id="overlay">⏳ Time’s up! Access expired.</div>
     </div>
-
-    <!-- Step C: password after scan -->
-    <div id="pwBlock" class="hidden">
-      <h3>Enter password to watch</h3>
-      <input id="pw2" type="password" placeholder="Enter password again" />
-      <br/>
-      <button id="unlockVideoBtn">Unlock Video</button>
-      <p id="pwErr" class="small" style="color:red; display:none;">Incorrect password</p>
-    </div>
-
-    <!-- Step D: video -->
-    <div id="videoBlock" class="hidden">
-      <h3>Authorized — Playing</h3>
-      <div id="videoContainer"></div>
-      <p class="small">If autoplay is blocked by the browser, press play in the player.</p>
-    </div>
-
-    <div id="debug" class="hidden"></div>
   </div>
 
-<script>
-/*
-  Robust single-file QR → password → embedded YouTube flow.
-  - QR encodes: absoluteURL + "?scan=1#video"
-  - On load we check:
-      - location.hash === "#video"
-      - location.search contains "scan=1"
-      - location.href contains "scan=1" or "#video"
-  - If none, show regular entry flow (reveal QR after password)
-  - Fallback button to manually continue if scanner stripped params
-*/
+  <script>
+    const correctPassword = "1432";  // 🔒 password before showing QR
+    const payload = "https://youtu.be/rsJ-LGpE7Lc?si=w_GlXtcaA8-jwwyH"; // 🎥 YouTube video link
+    const visibleDuration = 30;      // ⏰ seconds QR stays visible
 
-const FIRST_PW = "1432";   // password to reveal QR
-const SECOND_PW = "1432";  // password to view video
-const VISIBLE_SECONDS = 30; // QR visible duration
-const YOUTUBE_EMBED = "https://www.youtube.com/embed/rsJ-LGpE7Lc?si=w_GlXtcaA8-jwwyH";
+    document.getElementById("submitBtn").addEventListener("click", function () {
+      const entered = document.getElementById("password").value;
+      if (entered === correctPassword) {
+        // show QR section
+        document.getElementById("auth-section").classList.add("hidden");
+        document.getElementById("qr-section").classList.remove("hidden");
+        document.getElementById("qrcode").style.display = "block";
 
-const revealBlock = document.getElementById('revealBlock');
-const qrBlock     = document.getElementById('qrBlock');
-const pwBlock     = document.getElementById('pwBlock');
-const videoBlock  = document.getElementById('videoBlock');
-const debugEl     = document.getElementById('debug');
-const titleEl     = document.getElementById('title');
+        // generate QR
+        new QRCode(document.getElementById("qrcode"), {
+          text: payload,
+          width: 256,
+          height: 256,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H
+        });
 
-function debug(msg){
-  console.log(msg);
-  debugEl.classList.remove('hidden');
-  debugEl.textContent += msg + "\\n";
-}
+        // timer countdown
+        let remaining = visibleDuration;
+        const secondsEl = document.getElementById("seconds");
+        const overlay = document.getElementById("overlay");
+        const countdown = setInterval(() => {
+          remaining--;
+          secondsEl.textContent = remaining;
+          if (remaining <= 0) {
+            clearInterval(countdown);
+            overlay.style.visibility = "visible";
+            document.getElementById("qrcode").style.filter = "blur(6px)";
+            document.getElementById("downloadBtn").disabled = true;
+          }
+        }, 1000);
+      } else {
+        alert("Incorrect password! Try again.");
+      }
+    });
 
-// Build absolute URL to this page with scan flag
-function buildScanUrl(){
-  const loc = window.location;
-  const base = loc.origin + loc.pathname; // ensures absolute, no query/hash
-  // include both query param and hash to maximize scanner compatibility
-  return base + "?scan=1#video";
-}
-
-function showQRUI(){
-  revealBlock.classList.add('hidden');
-  qrBlock.classList.remove('hidden');
-  titleEl.textContent = "Scan QR to Continue";
-
-  // Make QR
-  const url = buildScanUrl();
-  debug("QR will encode: " + url);
-  new QRCode(document.getElementById('qrcode'), { text: url, width: 256, height: 256, colorDark: "#000", colorLight: "#fff", correctLevel: QRCode.CorrectLevel.H });
-
-  // Timer
-  let t = VISIBLE_SECONDS;
-  const timerEl = document.getElementById('timer');
-  const countdown = setInterval(()=>{
-    t--;
-    timerEl.textContent = t;
-    if(t <= 0){
-      clearInterval(countdown);
-      // hide/blur QR
-      document.getElementById('qrcode').style.filter = "blur(6px)";
-      titleEl.textContent = "Access expired";
-    }
-  }, 1000);
-}
-
-document.getElementById('showQrBtn').addEventListener('click', ()=>{
-  const v = document.getElementById('pw1').value || "";
-  if(v === FIRST_PW){
-    showQRUI();
-  } else {
-    alert("Incorrect password to reveal QR.");
-  }
-});
-
-// Fallback manual continue button (if scanner stripped params)
-document.getElementById('manualContinue').addEventListener('click', ()=>{
-  // navigate to same page with hash #video (most scanners keep hash or allow it)
-  const base = window.location.origin + window.location.pathname;
-  window.location.href = base + "#video";
-});
-
-// If page opened via scan, detect it robustly
-function wasScanned(){
-  const href = window.location.href || "";
-  const search = window.location.search || "";
-  const hash = window.location.hash || "";
-
-  debug("On load: href=" + href);
-  debug("On load: search=" + search);
-  debug("On load: hash=" + hash);
-
-  // Cases to detect:
-  if(hash === "#video") return true;
-  if(search && search.indexOf("scan=1") !== -1) return true;
-  // Some scanners may URL-encode; check raw href contains "scan=1" too
-  if(href.indexOf("scan=1") !== -1) return true;
-
-  return false;
-}
-
-// Handle scanned flow
-function handleScannedFlow(){
-  // Hide other blocks; show password-for-video block
-  revealBlock.classList.add('hidden');
-  qrBlock.classList.add('hidden');
-  pwBlock.classList.remove('hidden');
-  titleEl.textContent = "Enter Password to Watch";
-}
-
-// Video unlock
-document.getElementById('unlockVideoBtn').addEventListener('click', ()=>{
-  const v = document.getElementById('videoPassword').value || "";
-  const err = document.getElementById('pwErr');
-  if(v === SECOND_PW){
-    // show embedded video
-    pwBlock.classList.add('hidden');
-    videoBlock.classList.remove('hidden');
-    titleEl.textContent = "Authorized — Playing";
-
-    const cont = document.getElementById('videoContainer');
-    // clear any previous content and insert iframe
-    cont.innerHTML = "";
-    const ifr = document.createElement('iframe');
-    ifr.src = YOUTUBE_EMBED + "&autoplay=1&rel=0";
-    ifr.allow = "autoplay; encrypted-media";
-    ifr.allowFullscreen = true;
-    cont.appendChild(ifr);
-  } else {
-    err.style.display = "block";
-  }
-});
-
-// On load
-(function(){
-  if(wasScanned()){
-    debug("Detected scanner entry → showing video-password screen.");
-    handleScannedFlow();
-  } else {
-    debug("Normal entry (not from QR).");
-    // show reveal block only (default)
-  }
-})();
-</script>
+    // Download button
+    document.getElementById("downloadBtn").addEventListener("click", function () {
+      const container = document.getElementById("qrcode");
+      const img = container.querySelector("img");
+      if (img && img.src) {
+        const a = document.createElement("a");
+        a.href = img.src;
+        a.download = "private-qr.png";
+        a.click();
+        return;
+      }
+      const canvas = container.querySelector("canvas");
+      if (canvas) {
+        const url = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "private-qr.png";
+        a.click();
+      }
+    });
+  </script>
 </body>
 </html>
