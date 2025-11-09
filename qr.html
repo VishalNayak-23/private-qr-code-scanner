@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Time-Lock QR Link</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f6f8fb;
+      color: #111;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      text-align: center;
+      width: 320px;
+      position: relative;
+      overflow: hidden;
+    }
+    #qrcode { margin: 0 auto 18px; display: none; }
+    .info, #downloadBtn { display: none; }
+    input {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      width: 80%;
+      margin-bottom: 12px;
+    }
+    button {
+      background: #0b74de;
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:active { transform: translateY(1px); }
+    .small { font-size: 12px; color: #666; margin-top: 10px; }
+    .hidden { display: none; }
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #333;
+      font-size: 16px;
+      text-align: center;
+      border-radius: 12px;
+      visibility: hidden;
+    }
+    .timer {
+      font-size: 14px;
+      color: #0b74de;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Private QR Access</h2>
+    <div id="auth-section">
+      <p>Enter password to view the QR code:</p>
+      <input type="password" id="password" placeholder="Enter password" />
+      <br />
+      <button id="submitBtn">Unlock</button>
+      <div class="small">For authorized users only.</div>
+    </div>
+
+    <div id="qr-section" class="hidden">
+      <div class="timer">QR visible for <span id="seconds">30</span> seconds</div>
+      <h2>Scan this QR</h2>
+      <div id="qrcode"></div>
+      <div class="info">Opens: <strong>https://example.com</strong></div>
+      <button id="downloadBtn">Download PNG</button>
+      <div class="small">Scan quickly — it will hide automatically.</div>
+      <div class="overlay" id="overlay">⏳ Time’s up! Access expired.</div>
+    </div>
+  </div>
+
+  <script>
+    const correctPassword = "1432";    // 🔒 Change your password
+    const payload = "https://qrcode.com";  // 🌐 Replace with your link (works on all phones)
+    const visibleDuration = 30;        // ⏰ seconds QR stays visible
+
+    document.getElementById("submitBtn").addEventListener("click", function () {
+      const entered = document.getElementById("password").value;
+      if (entered === correctPassword) {
+        document.getElementById("auth-section").classList.add("hidden");
+        document.getElementById("qr-section").classList.remove("hidden");
+        document.getElementById("qrcode").style.display = "block";
+
+        new QRCode(document.getElementById("qrcode"), {
+          text: payload,
+          width: 256,
+          height: 256,
+          colorDark : "#000000",
+          colorLight : "#ffffff",
+          correctLevel : QRCode.CorrectLevel.H
+        });
+
+        // Timer countdown
+        let remaining = visibleDuration;
+        const secondsEl = document.getElementById("seconds");
+        const overlay = document.getElementById("overlay");
+        const countdown = setInterval(() => {
+          remaining--;
+          secondsEl.textContent = remaining;
+          if (remaining <= 0) {
+            clearInterval(countdown);
+            overlay.style.visibility = "visible";
+            document.getElementById("qrcode").style.filter = "blur(6px)";
+            document.getElementById("downloadBtn").disabled = true;
+          }
+        }, 1000);
+      } else {
+        alert("Incorrect password! Try again.");
+      }
+    });
+
+    // Download button
+    document.getElementById("downloadBtn").addEventListener("click", function () {
+      const container = document.getElementById("qrcode");
+      const img = container.querySelector("img");
+      if (img && img.src) {
+        const a = document.createElement("a");
+        a.href = img.src;
+        a.download = "private-qr.png";
+        a.click();
+        return;
+      }
+      const canvas = container.querySelector("canvas");
+      if (canvas) {
+        const url = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "private-qr.png";
+        a.click();
+      }
+    });
+  </script>
+</body>
+</html>
